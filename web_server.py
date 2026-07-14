@@ -27,6 +27,7 @@ from indicators import (
     format_indicator_summary,
 )
 from alerter import check_and_alert, is_configured
+from signal_history import get_stable_signal, add_history_entry, get_history, get_current_signal_info
 
 # ─── Logging ───────────────────────────────────────────────────────────
 
@@ -67,12 +68,31 @@ def scheduled_analysis() -> None:
         _active_summary = compute_all_indicators(df)
         _active_verdict = _build_verdict(_active_summary)
         logger.info(
-            "Analysis complete — price=%.2f, signal=%s",
+            "Analysis complete — price=%.2f, raw_signal=%s",
             _active_summary.last_price,
             _active_verdict.signal.value,
         )
-        # Send alert if signal changed (Telegram bot)
-        if _active_verdict:
+
+        # Apply signal stabilization (prevents flip-flopping)
+        changed, stable_signal, prev_signal = get_stable_signal(_active_verdict)
+
+        # Log the stable signal info
+        s_info = get_current_signal_info()
+        logger.info(
+            "Stable signal: %s (raw=%s, pending=%s, count=%d/%d)",
+            s_info["current_signal"],
+            s_info["raw_signal"],
+            s_info["candidate_signal"] or "-",
+            s_info["stabilization_count"],
+            s_info["stabilization_needed"],
+        )
+
+        # Record in history
+        add_history_entry(_active_verdict, changed, stable_signal, prev_signal)
+
+        # Send alert only if signal was confirmed changed
+        if changed and _active_verdict:
+            logger.info("Signal CHANGE confirmed: %s → %s", prev_signal, stable_signal)
             check_and_alert(_active_verdict)
     except Exception as exc:
         logger.error("Scheduled analysis failed: %s", exc)
@@ -247,12 +267,16 @@ async def api_analysis() -> JSONResponse:
         )
 
     indicator_dict = format_indicator_summary(_active_summary)
+    signal_info = get_current_signal_info()
     return JSONResponse(
         {
             "status": "ok",
             "timestamp": datetime.now().isoformat(),
             "last_price": _active_verdict.last_price,
             "signal": _active_verdict.signal.value,
+            "stable_signal": signal_info["current_signal"],
+            "previous_stable_signal": signal_info["previous_signal"],
+            "raw_signal": signal_info["raw_signal"],
             "core_thesis": _active_verdict.core_thesis,
             "market_nuance": _active_verdict.market_nuance,
             "coral": indicator_dict["coral"],
@@ -265,8 +289,15 @@ async def api_analysis() -> JSONResponse:
             "elliott_summary": _active_verdict.elliott_summary,
             "atr_summary": _active_verdict.atr_summary,
             "adx_summary": _active_verdict.adx_summary,
+            "signal_info": signal_info,
         }
     )
+
+
+@app.get("/api/history")
+async def api_history() -> JSONResponse:
+    """Return signal change history."""
+    return JSONResponse({"history": get_history(limit=50)})
 
 
 @app.get("/api/health")
