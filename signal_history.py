@@ -11,9 +11,12 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
+
+# IST timezone (UTC +5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 from indicators import AnalysisVerdict, SignalVerdict
 
@@ -100,7 +103,7 @@ def get_stable_signal(raw_verdict: AnalysisVerdict) -> tuple[bool, str, str]:
 def add_history_entry(verdict: AnalysisVerdict, changed: bool, stable_signal: str, prev_signal: str) -> SignalEntry:
     """Add a new entry to the signal history."""
     entry = SignalEntry(
-        timestamp=datetime.now().isoformat(),
+        timestamp=datetime.now(IST).isoformat(),
         signal=stable_signal,
         previous_signal=prev_signal,
         is_change=changed,

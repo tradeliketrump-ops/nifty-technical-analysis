@@ -10,8 +10,11 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+# IST timezone (UTC +5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -271,7 +274,7 @@ async def api_analysis() -> JSONResponse:
     return JSONResponse(
         {
             "status": "ok",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(IST).isoformat(),
             "last_price": _active_verdict.last_price,
             "signal": _active_verdict.signal.value,
             "stable_signal": signal_info["current_signal"],

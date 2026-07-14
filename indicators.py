@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import Any
+
+# IST timezone (UTC +5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 import numpy as np
 import pandas as pd
@@ -730,7 +733,7 @@ def compute_all_indicators(df: pd.DataFrame) -> IndicatorSummary:
     last_price = float(df["Close"].iloc[-1])
 
     return IndicatorSummary(
-        timestamp=datetime.now(),
+        timestamp=datetime.now(IST),
         last_price=last_price,
         coral=coral,
         hma=hma,
