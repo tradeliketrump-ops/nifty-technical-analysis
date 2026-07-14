@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIFTY 50 Technical Analysis</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e4e6f0;
+            --text-dim: #8b8fa3;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #eab308;
+            --blue: #3b82f6;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .header-meta {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .last-updated {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .badge-buy { background: var(--green); color: #000; }
+        .badge-sell { background: var(--red); color: #fff; }
+        .badge-hold { background: var(--yellow); color: #000; }
+
+        /* Last Price */
+        .price-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .price-card .price {
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+        .price-card .label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        /* Signal Banner */
+        .signal-banner {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+        .signal-banner .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .signal-banner .thesis {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: var(--text-dim);
+        }
+
+        /* Indicator Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .indicator-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+        }
+        .indicator-card h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .indicator-card .value-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4px;
+        }
+        .indicator-card .value-row .val {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .indicator-card .sub {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        /* Nuance */
+        .nuance-box {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            margin-bottom: 24px;
+        }
+        .nuance-box h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .nuance-box p {
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }
+
+        /* Text summaries */
+        .summary-text {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .text-green { color: var(--green); }
+        .text-red { color: var(--red); }
+        .text-yellow { color: var(--yellow); }
+        .text-blue { color: var(--blue); }
+
+        /* Polling indicator */
+        .poll-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <header>
+            <h1>🇮🇳 NIFTY 50 Technical Analysis</h1>
+            <div class="header-meta">
+                <span class="last-updated" id="lastUpdated">Loading...</span>
+                <span class="poll-dot" id="pollDot"></span>
+            </div>
+        </header>
+
+        <!-- Loading state -->
+        <div class="loading" id="loading">
+            <p>Loading NIFTY analysis data...</p>
+        </div>
+
+        <!-- Dashboard content (hidden until data loads) -->
+        <div id="dashboard" style="display:none;">
+
+            <!-- Price -->
+            <div class="price-card">
+                <div class="price" id="price">--</div>
+                <div class="label">NIFTY 50 — Last Price</div>
+            </div>
+
+            <!-- Signal Banner -->
+            <div class="signal-banner" id="signalBanner">
+                <div class="signal-header">
+                    <span style="font-weight:600;">Signal Verdict</span>
+                    <span class="badge" id="signalBadge">--</span>
+                </div>
+                <div class="thesis" id="coreThesis">--</div>
+            </div>
+
+            <!-- Indicator Grid -->
+            <div class="grid">
+                <!-- Coral Trend -->
+                <div class="indicator-card" id="coralCard">
+                    <h3>🐠 Coral Trend</h3>
+                    <div class="value-row">
+                        <span class="val" id="coralDirection">--</span>
+                        <span id="coralValue">--</span>
+                    </div>
+                    <div class="sub">Price: <span id="coralPosition">--</span> the line</div>
+                </div>
+
+                <!-- HMA -->
+                <div class="indicator-card" id="hmaCard">
+                    <h3>📈 Hull Moving Average</h3>
+                    <div class="value-row">
+                        <span class="val" id="hmaCrossover">--</span>
+                    </div>
+                    <div class="sub">Fast: <span id="hmaFast">--</span> &middot; Slow: <span id="hmaSlow">--</span></div>
+                    <div class="sub">Slope: <span id="hmaSlope">--</span></div>
+                </div>
+
+                <!-- Elliott Wave -->
+                <div class="indicator-card" id="elliottCard">
+                    <h3>🌊 Elliott Wave</h3>
+                    <div class="value-row">
+                        <span class="val" id="elliottLabel">--</span>
+                    </div>
+                    <div class="sub">Type: <span id="elliottType">--</span></div>
+                    <div class="sub">Confidence: <span id="elliottConfidence">--</span></div>
+                    <div class="sub">Exhaustion: <span id="elliottExhaustion">--</span></div>
+                </div>
+
+                <!-- ATR -->
+                <div class="indicator-card" id="atrCard">
+                    <h3>📊 ATR Volatility</h3>
+                    <div class="value-row">
+                        <span class="val" id="atrValue">--</span>
+                    </div>
+                    <div class="sub">Relative: <span id="atrRelative">--</span></div>
+                </div>
+
+                <!-- ADX -->
+                <div class="indicator-card" id="adxCard">
+                    <h3>📐 ADX Trend Strength</h3>
+                    <div class="value-row">
+                        <span class="val" id="adxValue">--</span>
+                    </div>
+                    <div class="sub">Strength: <span id="adxStrength">--</span></div>
+                    <div class="sub">+DI: <span id="plusDi">--</span> &middot; -DI: <span id="minusDi">--</span></div>
+                    <div class="sub">Direction: <span id="adxDirection">--</span></div>
+                </div>
+            </div>
+
+            <!-- Market Nuance -->
+            <div class="nuance-box">
+                <h3>📋 Market Nuance</h3>
+                <p id="marketNuance">--</p>
+            </div>
+
+            <!-- Text summaries -->
+            <div class="nuance-box">
+                <h3>📝 Indicator Summaries</h3>
+                <div class="summary-text" id="coralSummaryText">--</div>
+                <div class="summary-text" id="hmaSummaryText" style="margin-top:4px;">--</div>
+                <div class="summary-text" id="elliottSummaryText" style="margin-top:4px;">--</div>
+                <div class="summary-text" id="atrSummaryText" style="margin-top:4px;">--</div>
+                <div class="summary-text" id="adxSummaryText" style="margin-top:4px;">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ─── DOM refs ──────────────────────────────────────────────────
+        const $ = (id) => document.getElementById(id);
+        const loadingEl = $('loading');
+        const dashboardEl = $('dashboard');
+        const priceEl = $('price');
+        const signalBadge = $('signalBadge');
+        const coreThesis = $('coreThesis');
+        const marketNuance = $('marketNuance');
+        const lastUpdated = $('lastUpdated');
+
+        // Coral
+        const coralDirection = $('coralDirection');
+        const coralValue = $('coralValue');
+        const coralPosition = $('coralPosition');
+
+        // HMA
+        const hmaCrossover = $('hmaCrossover');
+        const hmaFast = $('hmaFast');
+        const hmaSlow = $('hmaSlow');
+        const hmaSlope = $('hmaSlope');
+
+        // Elliott
+        const elliottLabel = $('elliottLabel');
+        const elliottType = $('elliottType');
+        const elliottConfidence = $('elliottConfidence');
+        const elliottExhaustion = $('elliottExhaustion');
+
+        // ATR
+        const atrValue = $('atrValue');
+        const atrRelative = $('atrRelative');
+
+        // ADX
+        const adxValue = $('adxValue');
+        const adxStrength = $('adxStrength');
+        const plusDi = $('plusDi');
+        const minusDi = $('minusDi');
+        const adxDirection = $('adxDirection');
+
+        // Summaries
+        const coralSummaryText = $('coralSummaryText');
+        const hmaSummaryText = $('hmaSummaryText');
+        const elliottSummaryText = $('elliottSummaryText');
+        const atrSummaryText = $('atrSummaryText');
+        const adxSummaryText = $('adxSummaryText');
+
+        // ─── Helpers ───────────────────────────────────────────────────
+        function formatTime(isoStr) {
+            const d = new Date(isoStr);
+            return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function colorClass(value) {
+            const v = value.toLowerCase();
+            if (v.includes('bull')) return 'text-green';
+            if (v.includes('bear')) return 'text-red';
+            if (v === 'buy') return 'text-green';
+            if (v === 'sell') return 'text-red';
+            if (v === 'hold') return 'text-yellow';
+            return '';
+        }
+
+        function badgeClass(signal) {
+            const s = signal.toLowerCase();
+            if (s === 'buy') return 'badge-buy';
+            if (s === 'sell') return 'badge-sell';
+            return 'badge-hold';
+        }
+
+        // ─── Render ────────────────────────────────────────────────────
+        function render(data) {
+            // Price
+            const price = data.last_price || 0;
+            priceEl.textContent = price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Signal
+            const signal = data.signal || 'HOLD';
+            signalBadge.textContent = signal;
+            signalBadge.className = 'badge ' + badgeClass(signal);
+            coreThesis.textContent = data.core_thesis || '--';
+            marketNuance.textContent = data.market_nuance || '--';
+
+            // Coral
+            const coral = data.coral || {};
+            coralDirection.textContent = (coral.direction || '--').toUpperCase();
+            coralDirection.className = 'val ' + colorClass(coral.direction || '');
+            coralValue.textContent = coral.value ? coral.value.toFixed(2) : '--';
+            coralPosition.textContent = coral.price_position || '--';
+
+            // HMA
+            const hma = data.hma || {};
+            const cross = (hma.crossover || '--').replace('_', ' ').toUpperCase();
+            hmaCrossover.textContent = cross;
+            hmaCrossover.className = 'val ' + colorClass(hma.crossover || '');
+            hmaFast.textContent = hma.fast_value ? hma.fast_value.toFixed(2) : '--';
+            hmaSlow.textContent = hma.slow_value ? hma.slow_value.toFixed(2) : '--';
+            hmaSlope.textContent = (hma.slope || '--').replace('_', ' ').toUpperCase();
+            hmaSlope.className = colorClass(hma.slope || '');
+
+            // Elliott
+            const elliott = data.elliott || {};
+            elliottLabel.textContent = elliott.wave_label || '--';
+            elliottLabel.className = 'val ' + (elliott.count_exhaustion ? 'text-red' : '');
+            elliottType.textContent = elliott.wave_type || '--';
+            elliottConfidence.textContent = elliott.confirmation_strength ? (elliott.confirmation_strength * 100).toFixed(0) + '%' : '--';
+            elliottExhaustion.textContent = elliott.count_exhaustion ? '⚠ Yes' : 'No';
+            elliottExhaustion.className = elliott.count_exhaustion ? 'text-red' : '';
+
+            // ATR
+            const atr = data.atr || {};
+            atrValue.textContent = atr.value ? atr.value.toFixed(2) : '--';
+            atrRelative.textContent = (atr.relative_strength || '--').toUpperCase();
+            atrRelative.className = atr.relative_strength === 'high' ? 'text-red' : atr.relative_strength === 'low' ? 'text-blue' : '';
+
+            // ADX
+            const adx = data.adx || {};
+            adxValue.textContent = adx.adx_value ? adx.adx_value.toFixed(2) : '--';
+            adxStrength.textContent = (adx.trend_strength || '--').toUpperCase();
+            adxStrength.className = 'val ' + (adx.trend_strength === 'strong' ? 'text-green' : adx.trend_strength === 'weak' ? 'text-yellow' : '');
+            plusDi.textContent = adx.plus_di ? adx.plus_di.toFixed(2) : '--';
+            minusDi.textContent = adx.minus_di ? adx.minus_di.toFixed(2) : '--';
+            adxDirection.textContent = (adx.direction || '--').toUpperCase();
+            adxDirection.className = colorClass(adx.direction || '');
+
+            // Summaries
+            coralSummaryText.textContent = data.coral_summary || '';
+            hmaSummaryText.textContent = data.hma_summary || '';
+            elliottSummaryText.textContent = data.elliott_summary || '';
+            atrSummaryText.textContent = data.atr_summary || '';
+            adxSummaryText.textContent = data.adx_summary || '';
+
+            // Timestamp
+            lastUpdated.textContent = 'Updated: ' + formatTime(data.timestamp || new Date().toISOString());
+        }
+
+        // ─── Fetch & Poll ──────────────────────────────────────────────
+        async function fetchAnalysis() {
+            try {
+                const resp = await fetch('/api/analysis');
+                if (!resp.ok) {
+                    if (resp.status === 503) {
+                        // Still pending — keep showing loading
+                        return;
+                    }
+                    throw new Error('HTTP ' + resp.status);
+                }
+                const data = await resp.json();
+                if (data.status === 'ok') {
+                    loadingEl.style.display = 'none';
+                    dashboardEl.style.display = 'block';
+                    render(data);
+                }
+            } catch (err) {
+                console.error('Poll error:', err);
+                // If we've never loaded, keep loading visible
+                if (dashboardEl.style.display === 'none') {
+                    loadingEl.innerHTML = '<p>Unable to fetch analysis. Retrying...</p>';
+                }
+            }
+        }
+
+        // Initial fetch
+        fetchAnalysis();
+
+        // Poll every 15 seconds
+        setInterval(fetchAnalysis, 15_000);
+    </script>
+</body>
+</html>
