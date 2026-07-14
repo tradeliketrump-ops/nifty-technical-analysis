@@ -31,6 +31,11 @@ from indicators import (
 )
 from alerter import check_and_alert, is_configured
 from signal_history import get_stable_signal, add_history_entry, get_history, get_current_signal_info
+from trade_journal import (
+    record_signal, check_pending_trades, get_performance_stats,
+    get_recent_trades, get_strategy_suggestion,
+)
+from sma50_filter import compute_sma50, apply_sma50_filter, SMA50Result
 
 # ─── Logging ───────────────────────────────────────────────────────────
 
@@ -69,7 +74,7 @@ def scheduled_analysis() -> None:
             return
 
         _active_summary = compute_all_indicators(df)
-        _active_verdict = _build_verdict(_active_summary)
+        _active_verdict = _build_verdict(_active_summary, df)
         logger.info(
             "Analysis complete — price=%.2f, raw_signal=%s",
             _active_summary.last_price,
@@ -97,12 +102,21 @@ def scheduled_analysis() -> None:
         if changed and _active_verdict:
             logger.info("Signal CHANGE confirmed: %s → %s", prev_signal, stable_signal)
             check_and_alert(_active_verdict)
+
+        # Record BUY/SELL signals in trade journal
+        if _active_verdict and _active_summary:
+            record_signal(_active_verdict, _active_summary)
+
+        # Check pending trades for 1-hour price movement
+        updated = check_pending_trades()
+        if updated > 0:
+            logger.info("Trade journal: %d pending trades updated.", updated)
     except Exception as exc:
         logger.error("Scheduled analysis failed: %s", exc)
 
 
-def _build_verdict(summary: IndicatorSummary) -> AnalysisVerdict:
-    """Build verdict incorporating Coral, HMA, Elliott, ADX, and ATR."""
+def _build_verdict(summary: IndicatorSummary, df: pd.DataFrame = None) -> AnalysisVerdict:
+    """Build verdict incorporating Coral, HMA, Elliott, ADX, ATR, and SMA50."""
     from indicators import SignalVerdict, TrendDirection
 
     coral = summary.coral
@@ -148,7 +162,7 @@ def _build_verdict(summary: IndicatorSummary) -> AnalysisVerdict:
         score += 1
 
     if score >= 3:
-        signal = SignalVerdict.BUY
+        raw_signal = SignalVerdict.BUY
         thesis = "Bullish alignment across trend, momentum, ADX, and wave structure."
         nuance = (
             f"Strength from Coral Trend, HMA crossover, and {adx.trend_strength} "
@@ -156,7 +170,7 @@ def _build_verdict(summary: IndicatorSummary) -> AnalysisVerdict:
             "Monitor for volume confirmation."
         )
     elif score <= -3:
-        signal = SignalVerdict.SELL
+        raw_signal = SignalVerdict.SELL
         thesis = "Bearish alignment — trend, momentum, and ADX are all negative."
         nuance = (
             f"Coral and HMA both bearish with {adx.trend_strength} {adx.direction} ADX. "
@@ -164,7 +178,7 @@ def _build_verdict(summary: IndicatorSummary) -> AnalysisVerdict:
             "Consider protective puts or reduced exposure."
         )
     else:
-        signal = SignalVerdict.HOLD
+        raw_signal = SignalVerdict.HOLD
         thesis = "Mixed signals — no clear directional edge."
         nuance = (
             f"Coral and HMA show conflicting or neutral readings. "
@@ -172,6 +186,34 @@ def _build_verdict(summary: IndicatorSummary) -> AnalysisVerdict:
             f"volatility is {atr.relative_strength}. "
             "Wait for clearer setup."
         )
+
+    # ── SMA50 Trend Filter ──────────────────────────────────────────
+    sma50_filter_result = None
+    sma50_summary = ""
+    if df is not None and not df.empty:
+        sma50_result = compute_sma50(df)
+        sma50_filter_result = sma50_result
+        filtered_signal = apply_sma50_filter(raw_signal, sma50_result)
+        if filtered_signal != raw_signal:
+            signal = filtered_signal
+            sma50_summary = (
+                f"SMA50 filter overrode {raw_signal.value} to HOLD "
+                f"(Close {sma50_result.price_position} SMA50 at {sma50_result.value:.2f})."
+            )
+            thesis = f"{thesis} SMA50 filter applied — Close is {sma50_result.price_position} SMA50."
+            nuance = (
+                f"Original signal was {raw_signal.value} but price at {summary.last_price:.2f} "
+                f"is {sma50_result.price_position} the 50-period MA ({sma50_result.value:.2f}). "
+                f"Downgraded to HOLD for trend alignment."
+            )
+            logger.info("SMA50 filter applied: %s → HOLD (price=%s SMA50)", raw_signal.value, sma50_result.price_position)
+        else:
+            signal = raw_signal
+            sma50_summary = (
+                f"SMA50 confirmed: Close is {sma50_result.price_position} SMA50 at {sma50_result.value:.2f}."
+            )
+    else:
+        signal = raw_signal
 
     coral_summary = (
         f"Coral Trend is {coral.direction.value} "
@@ -301,6 +343,26 @@ async def api_analysis() -> JSONResponse:
 async def api_history() -> JSONResponse:
     """Return signal change history."""
     return JSONResponse({"history": get_history(limit=50)})
+
+
+@app.get("/api/performance")
+async def api_performance() -> JSONResponse:
+    """Return trade journal performance stats and strategy suggestion."""
+    stats = get_performance_stats()
+    if _active_verdict and _active_summary:
+        strategy = get_strategy_suggestion(_active_verdict, _active_summary)
+    else:
+        strategy = {}
+    return JSONResponse({
+        "performance": stats,
+        "strategy": strategy,
+    })
+
+
+@app.get("/api/trades")
+async def api_trades() -> JSONResponse:
+    """Return recent trade records."""
+    return JSONResponse({"trades": get_recent_trades(limit=30)})
 
 
 @app.get("/api/health")

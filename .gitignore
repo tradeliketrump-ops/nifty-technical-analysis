@@ -6,3 +6,7 @@ __pycache__/
 *.db
 .DS_Store
 .previous_signal.json
+*.json
+!requirements.txt
+!skill_nifty_technical_analyst.md
+!implementation_plan.md
