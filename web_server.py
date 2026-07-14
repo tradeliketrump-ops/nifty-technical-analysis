@@ -16,6 +16,25 @@ from pathlib import Path
 # IST timezone (UTC +5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# Market hours (IST)
+MARKET_OPEN_HOUR = 9
+MARKET_OPEN_MINUTE = 15
+MARKET_CLOSE_HOUR = 15
+MARKET_CLOSE_MINUTE = 30
+
+
+def is_market_open() -> bool:
+    """Check if current IST time is within NSE market hours (Mon-Fri, 9:15 AM - 3:30 PM)."""
+    now = datetime.now(IST)
+    # Weekend check (Monday=0, Sunday=6)
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    # Time check
+    market_open = now.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
+    market_close = now.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+    return market_open <= now <= market_close
+
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -60,6 +79,12 @@ _scheduler: BackgroundScheduler | None = None
 def scheduled_analysis() -> None:
     """APScheduler callback: refresh data and recompute indicators."""
     global _active_summary, _active_verdict
+
+    # Skip analysis if market is closed
+    if not is_market_open():
+        logger.info("Market closed — skipping analysis.")
+        return
+
     try:
         logger.info("Running scheduled analysis...")
         clear_cache()
@@ -317,6 +342,7 @@ async def api_analysis() -> JSONResponse:
         {
             "status": "ok",
             "timestamp": datetime.now(IST).isoformat(),
+            "market_open": is_market_open(),
             "last_price": _active_verdict.last_price,
             "signal": _active_verdict.signal.value,
             "stable_signal": signal_info["current_signal"],
