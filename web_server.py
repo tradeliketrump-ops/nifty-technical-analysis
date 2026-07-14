@@ -371,6 +371,95 @@ async def api_history() -> JSONResponse:
     return JSONResponse({"history": get_history(limit=50)})
 
 
+@app.get("/api/llm-analysis")
+async def api_llm_analysis() -> JSONResponse:
+    """Return a comprehensive analysis package designed for LLM consumption.
+
+    This endpoint packages ALL indicator data + mechanical verdict + reasoning
+    framework into a single JSON response. An LLM can use this to produce its
+    own independent verdict by applying the rules in skill_nifty_technical_analyst.md.
+    """
+    if _active_summary is None or _active_verdict is None:
+        return JSONResponse(
+            {"status": "pending", "message": "Analysis not yet complete."},
+            status_code=503,
+        )
+
+    now_ist = datetime.now(IST)
+    df = get_cached_data()
+
+    # Compute SMA50
+    sma50_val = 0.0
+    sma50_pos = "unknown"
+    if df is not None and not df.empty:
+        sma50_res = compute_sma50(df)
+        sma50_val = sma50_res.value
+        sma50_pos = sma50_res.price_position
+
+    indicator_dict = format_indicator_summary(_active_summary)
+    signal_info = get_current_signal_info()
+    strategy = get_strategy_suggestion(_active_verdict, _active_summary)
+    perf = get_performance_stats()
+
+    llm_package = {
+        "query": "Analyze the following NIFTY 50 indicator data and produce your own BUY/SELL/HOLD verdict. Use the reasoning framework from skill_nifty_technical_analyst.md.",
+        "timestamp": now_ist.isoformat(),
+        "market_open": is_market_open(),
+        "mechanical_verdict": {
+            "signal": _active_verdict.signal.value,
+            "stable_signal": signal_info["current_signal"],
+            "core_thesis": _active_verdict.core_thesis,
+            "market_nuance": _active_verdict.market_nuance,
+        },
+        "current_price": _active_verdict.last_price,
+        "indicators": {
+            "coral_trend": indicator_dict["coral"],
+            "hull_moving_average": indicator_dict["hma"],
+            "elliott_wave": indicator_dict["elliott"],
+            "average_true_range": indicator_dict["atr"],
+            "average_directional_index": indicator_dict["adx"],
+        },
+        "sma50": {
+            "value": sma50_val,
+            "price_position": sma50_pos,
+        },
+        "indicator_summaries": {
+            "coral": _active_verdict.coral_summary,
+            "hma": _active_verdict.hma_summary,
+            "elliott": _active_verdict.elliott_summary,
+            "atr": _active_verdict.atr_summary,
+            "adx": _active_verdict.adx_summary,
+        },
+        "options_strategy": {
+            "suggested_strategy": strategy.get("suggested_strategy", ""),
+            "rationale": strategy.get("rationale", ""),
+            "direction": strategy.get("direction", ""),
+        },
+        "signal_stabilization": signal_info,
+        "historical_performance": {
+            "win_rate_pct": perf.get("win_rate_pct", 0),
+            "total_signals": perf.get("completed_checks", 0),
+            "avg_move_points": perf.get("avg_move_points", 0),
+        },
+        "reasoning_framework": {
+            "reference": "skill_nifty_technical_analyst.md",
+            "key_rules": [
+                "ADX < 20 = ranging market, avoid trend signals",
+                "ADX >= 25 = strong trend, increase conviction",
+                "Elliott exhaustion (Wave 5/C) trumps alignment",
+                "Coral crossing = no-trade zone, wait for confirmation",
+                "HMA slope: steep = committed, flat = hesitant",
+                "SMA50: BUY only above, SELL only below",
+                "High ATR = reduce conviction, widen stops",
+                "Low ATR + strong ADX = high conviction trend continuation",
+            ],
+        },
+        "your_task": "Apply the reasoning framework above to the indicators provided. Consider confluences and conflicts between indicators. Produce STRONG_BUY/BUY/CAUTIOUS_BUY/HOLD/CAUTIOUS_SELL/SELL/STRONG_SELL with detailed reasoning.",
+    }
+
+    return JSONResponse(llm_package)
+
+
 @app.get("/api/performance")
 async def api_performance() -> JSONResponse:
     """Return trade journal performance stats and strategy suggestion."""
