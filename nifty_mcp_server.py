@@ -38,7 +38,10 @@ mcp = FastMCP(
     "nifty-technical-analyst",
     instructions="NIFTY 50 technical analysis server providing OHLCV data, "
     "Coral Trend, HMA, Elliott Wave, ATR (volatility), "
-    "and ADX (trend strength) indicators.",
+    "and ADX (trend strength) indicators. "
+    "Use get_indicator_summary() for raw data, then apply the "
+    "skill_nifty_technical_analyst.md framework to produce "
+    "your own AI-driven verdict with confluence analysis.",
 )
 
 
