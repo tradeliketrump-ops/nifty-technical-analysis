@@ -26,6 +26,7 @@ from indicators import (
     compute_all_indicators,
     format_indicator_summary,
 )
+from alerter import check_and_alert, is_configured
 
 # ─── Logging ───────────────────────────────────────────────────────────
 
@@ -61,6 +62,9 @@ def scheduled_analysis() -> None:
             _active_summary.last_price,
             _active_verdict.signal.value,
         )
+        # Send alert if signal changed (Telegram bot)
+        if _active_verdict:
+            check_and_alert(_active_verdict)
     except Exception as exc:
         logger.error("Scheduled analysis failed: %s", exc)
 
