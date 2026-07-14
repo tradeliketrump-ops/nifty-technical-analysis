@@ -208,6 +208,14 @@
         <!-- Loading state -->
         <div class="loading" id="loading">
             <p>Loading NIFTY analysis data...</p>
+            <p style="margin-top:8px;font-size:0.8rem;color:var(--text-dim);" id="loadingSub">This may take up to 60 seconds on first load.</p>
+        </div>
+
+        <!-- Error state -->
+        <div class="loading" id="error" style="display:none;">
+            <p style="color:var(--red);">⚠️ Unable to load NIFTY analysis</p>
+            <p style="margin-top:8px;font-size:0.85rem;color:var(--text-dim);" id="errorDetail">The server may still be starting up.</p>
+            <button onclick="location.reload()" style="margin-top:16px;padding:8px 24px;background:var(--blue);color:#fff;border:none;border-radius:8px;cursor:pointer;">Retry</button>
         </div>
 
         <!-- Dashboard content (hidden until data loads) -->
@@ -304,6 +312,8 @@
         // ─── DOM refs ──────────────────────────────────────────────────
         const $ = (id) => document.getElementById(id);
         const loadingEl = $('loading');
+        const errorEl = $('error');
+        const errorDetail = $('errorDetail');
         const dashboardEl = $('dashboard');
         const priceEl = $('price');
         const signalBadge = $('signalBadge');
@@ -436,12 +446,21 @@
         }
 
         // ─── Fetch & Poll ──────────────────────────────────────────────
+        let pollCount = 0;
+        const MAX_POLLS_BEFORE_ERROR = 12; // ~2 minutes of polling
+
         async function fetchAnalysis() {
             try {
                 const resp = await fetch('/api/analysis');
                 if (!resp.ok) {
                     if (resp.status === 503) {
                         // Still pending — keep showing loading
+                        pollCount++;
+                        if (pollCount > MAX_POLLS_BEFORE_ERROR) {
+                            loadingEl.style.display = 'none';
+                            errorEl.style.display = 'block';
+                            errorDetail.textContent = 'Analysis engine still initializing after 2 minutes. The data provider (Yahoo Finance) may be slow or blocked. Try again later.';
+                        }
                         return;
                     }
                     throw new Error('HTTP ' + resp.status);
@@ -449,14 +468,18 @@
                 const data = await resp.json();
                 if (data.status === 'ok') {
                     loadingEl.style.display = 'none';
+                    errorEl.style.display = 'none';
                     dashboardEl.style.display = 'block';
                     render(data);
                 }
             } catch (err) {
                 console.error('Poll error:', err);
-                // If we've never loaded, keep loading visible
-                if (dashboardEl.style.display === 'none') {
-                    loadingEl.innerHTML = '<p>Unable to fetch analysis. Retrying...</p>';
+                pollCount++;
+                if (pollCount > 3) {
+                    // Show error state after a few failed attempts
+                    loadingEl.style.display = 'none';
+                    errorEl.style.display = 'block';
+                    errorDetail.textContent = err.message + '. Check that the server is running and can reach Yahoo Finance.';
                 }
             }
         }
