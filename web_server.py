@@ -55,6 +55,15 @@ def scheduled_analysis() -> None:
         logger.info("Running scheduled analysis...")
         clear_cache()
         df = get_cached_data(force_refresh=True)
+
+        if df is None or df.empty:
+            logger.warning("No data returned — keeping previous analysis state.")
+            # Still allow health check to pass; don't overwrite state
+            if _active_summary is None:
+                # First run with no data — API will return 503 gracefully
+                logger.warning("No cached data available yet.")
+            return
+
         _active_summary = compute_all_indicators(df)
         _active_verdict = _build_verdict(_active_summary)
         logger.info(
