@@ -55,6 +55,7 @@ from trade_journal import (
     get_recent_trades, get_strategy_suggestion,
 )
 from sma50_filter import compute_sma50, apply_sma50_filter, SMA50Result
+from ai_analyst import run_ai_analysis, get_latest_ai_verdict
 
 # ─── Logging ───────────────────────────────────────────────────────────
 
@@ -136,6 +137,16 @@ def scheduled_analysis() -> None:
         updated = check_pending_trades()
         if updated > 0:
             logger.info("Trade journal: %d pending trades updated.", updated)
+
+        # Run AI analysis in background
+        if _active_verdict and _active_summary:
+            try:
+                ai_result = run_ai_analysis(_active_verdict, _active_summary)
+                if ai_result:
+                    agrees = "AGREES" if ai_result.get("agrees_with_mechanical") else "DIFFERS"
+                    logger.info("AI: %s (confidence=%s, %s)", ai_result.get("ai_signal", "?"), ai_result.get("ai_confidence", "?"), agrees)
+            except Exception as ai_exc:
+                logger.warning("AI analysis failed: %s", ai_exc)
     except Exception as exc:
         logger.error("Scheduled analysis failed: %s", exc)
 
@@ -458,6 +469,27 @@ async def api_llm_analysis() -> JSONResponse:
     }
 
     return JSONResponse(llm_package)
+
+
+@app.get("/api/ai-verdict")
+async def api_ai_verdict() -> JSONResponse:
+    """Return the latest AI-generated verdict for dashboard display."""
+    verdict = get_latest_ai_verdict()
+    if verdict is None:
+        return JSONResponse({"ai_available": False, "ai_signal": "NONE", "reasoning": "AI analysis not yet run."})
+    return JSONResponse({
+        "ai_available": True,
+        "ai_signal": verdict.get("ai_signal", "N/A"),
+        "ai_confidence": verdict.get("ai_confidence", "LOW"),
+        "mechanical_signal": verdict.get("mechanical_signal", "N/A"),
+        "agrees": verdict.get("agrees_with_mechanical", True),
+        "reasoning": verdict.get("reasoning", ""),
+        "key_conflict": verdict.get("key_conflict", ""),
+        "suggested_strategy": verdict.get("suggested_strategy", ""),
+        "model_used": verdict.get("model_used", ""),
+        "elapsed_ms": verdict.get("elapsed_ms", 0),
+        "timestamp": verdict.get("timestamp", ""),
+    })
 
 
 @app.get("/api/performance")
